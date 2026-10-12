@@ -1,8 +1,8 @@
-"""관심 종목 감시: 1시간마다 시세·뉴스를 확인하고, 전일 대비 ±5% 이상이면 폰(ntfy)으로 알림.
+"""관심 종목 감시: 1시간마다 시세·뉴스를 확인하고, 전일 대비 ±5% 이상이면 폰(텔레그램·ntfy)으로 알림.
 
-실행: python stock_watch.py              (종목 입력 후 감시 시작)
-      python stock_watch.py --kakao-login (카카오톡 알림 연결, 처음 한 번)
-      python stock_watch.py --test-push   (폰 알림 테스트만)
+실행: python stock_watch.py                  (종목 입력 후 감시 시작)
+      python stock_watch.py --telegram-setup (텔레그램 봇 연결, 처음 한 번)
+      python stock_watch.py --test-push      (폰 알림 테스트만)
 """
 import ctypes
 import email.utils
@@ -17,7 +17,7 @@ import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 
-import kakao
+import telegram
 
 INTERVAL_SEC = 3600       # 확인 주기
 ALERT_PCT = 5.0           # 알림 기준 등락률(%)
@@ -213,13 +213,13 @@ def stock_url(stock):
 def notify(cfg, title, message, link=None, tags=None):
     """설정된 모든 채널로 알림을 보내고, 채널별 결과를 문자열로 돌려준다."""
     results = []
-    if kakao.is_ready(cfg):
+    tg = cfg.get("telegram") or {}
+    if tg.get("token") and tg.get("chat_id"):
         try:
-            kakao.send(cfg, f"{title}\n{message}", link)
-            results.append("카카오톡 OK")
+            telegram.send(tg["token"], tg["chat_id"], title, message, [("시세 보기", link)] if link else ())
+            results.append("텔레그램 OK")
         except Exception as e:
-            results.append(f"카카오톡 실패({e})")
-        save_config(cfg)   # 토큰이 갱신됐을 수 있음
+            results.append(f"텔레그램 실패({e})")
     if cfg.get("ntfy_enabled", True):
         try:
             push(cfg["ntfy_topic"], title, message, priority=5, tags=tags)
@@ -277,13 +277,33 @@ def check_once(cfg, seen_links, alerted):
             log(f"  뉴스 조회 실패: {e}")
 
 
+def telegram_setup(cfg):
+    """봇 토큰을 받고, 봇에게 말을 건 대화방에서 chat_id를 찾아 저장한다 (봇 만드는 법은 telegram.py 참고)."""
+    token = input("텔레그램 봇 토큰: ").strip()
+    if not token:
+        return False
+    ids = telegram.chat_ids(token)
+    if ids:
+        for i, (cid, name) in enumerate(ids, 1):
+            print(f"  {i}) {name} ({cid})")
+        pick = input("  번호 선택 [Enter=1]: ").strip() or "1"
+        chat_id = ids[int(pick) - 1][0] if pick.isdigit() and 1 <= int(pick) <= len(ids) else None
+    else:
+        print("  최근 대화를 못 찾았습니다. 봇에게 아무 말이나 보내고 다시 하거나, chat_id를 직접 입력하세요.")
+        chat_id = input("  chat_id [Enter=취소]: ").strip() or None
+    if not chat_id:
+        return False
+    cfg["telegram"] = {"token": token, "chat_id": chat_id}
+    save_config(cfg)
+    return True
+
+
 def main():
     cfg = load_config()
-    if "--kakao-login" in sys.argv:
-        kakao.login(cfg)
-        save_config(cfg)
-        print("카카오 로그인 완료. 테스트 메시지를 보냅니다.")
-        print(notify(cfg, "[주식 알림] 연결 완료", "카카오톡 알림이 정상 동작합니다."))
+    if "--telegram-setup" in sys.argv:
+        if telegram_setup(cfg):
+            print("텔레그램 연결 완료. 테스트 메시지를 보냅니다.")
+            print(notify(cfg, "[주식 알림] 연결 완료", "텔레그램 알림이 정상 동작합니다."))
         return
 
     if "--test-push" in sys.argv:
@@ -291,7 +311,7 @@ def main():
         return
 
     print("알림 채널: " + ", ".join(
-        (["카카오톡"] if kakao.is_ready(cfg) else [])
+        (["텔레그램"] if (cfg.get("telegram") or {}).get("chat_id") else [])
         + ([f"ntfy({cfg['ntfy_topic']})"] if cfg.get("ntfy_enabled", True) else [])))
 
     if cfg["stocks"]:
