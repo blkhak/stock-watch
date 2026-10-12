@@ -1,8 +1,12 @@
 name: stock-watch
 
 on:
+  # cron은 UTC 기준(KST-9). 매시 7분에 도는 건 정각에 GitHub가 붐벼 지연이 크기 때문
   schedule:
-    - cron: "7 * * * *"   # 매시 7분(UTC 기준이지만 매시간이라 무관). 정각은 GitHub가 붐벼 지연이 큼
+    - cron: "7 23 * * 0-4"           # 평일 KST 08시
+    - cron: "7 0-9 * * 1-5"          # 평일 KST 09~18시 매시간 (장중·장 마감 공시)
+    - cron: "7 12,15,18,21 * * *"    # 매일 KST 21·00·03·06시 (밤엔 3시간마다, 비트코인·뉴스용)
+    - cron: "7 0,3,6,9 * * 0,6"      # 주말 KST 09·12·15·18시
   workflow_dispatch:       # Actions 화면에서 수동 실행
     inputs:
       test:

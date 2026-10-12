@@ -1,4 +1,4 @@
-"""GitHub Actions에서 1시간마다 한 번 실행되는 감시 스크립트.
+"""GitHub Actions에서 실행되는 감시 스크립트 (평일 낮엔 1시간, 밤·주말엔 3시간마다).
 
 - stocks.json의 종목 시세를 확인해 전일 대비 ±ALERT_PCT% 이상이면 카톡 알림 (같은 날·같은 방향 1회)
 - 직전 실행 이후 새로 나온 뉴스(네이버 증권 + 구글 뉴스)를 종목별로 최대 3건씩 카톡으로 보냄
@@ -23,7 +23,7 @@ import stock_watch as sw
 
 ALERT_PCT = 5.0
 NEWS_PER_STOCK = 3
-NEWS_MAX_AGE_H = 2      # 첫 실행이나 실행이 밀렸을 때 오래된 뉴스가 쏟아지지 않게
+NEWS_MAX_AGE_H = 4      # 실행 간격(최대 3시간)보다 길어야 함. 첫 실행이나 실행이 밀렸을 때 오래된 뉴스가 쏟아지지 않게
 SEEN_KEEP = 1500
 ALERTED_KEEP = 300
 DART_PER_STOCK = 3
@@ -78,6 +78,14 @@ def save_kakao_cfg(key, cfg):
     kc = cfg["kakao"]
     seed = hashlib.sha256(os.environ.get("KAKAO_REFRESH_TOKEN", "").encode()).hexdigest()
     data = json.dumps({"refresh_token": kc["refresh_token"], "seed": seed}).encode()
+    # 암호문은 매번 달라지므로 내용이 같으면 다시 쓰지 않는다 (불필요한 state 커밋 방지)
+    if os.path.exists(TOKEN_PATH):
+        with open(TOKEN_PATH, encoding="utf-8") as f:
+            try:
+                if decrypt(key, f.read().strip()) == data:
+                    return
+            except ValueError:
+                pass
     with open(TOKEN_PATH, "w", encoding="utf-8") as f:
         f.write(encrypt(key, data) + "\n")
 
