@@ -1,26 +1,20 @@
 """GitHub Actions에서 실행되는 감시 스크립트 (평일 낮엔 1시간, 밤·주말엔 3시간마다).
 
-- stocks.json의 종목 시세를 확인해 전일 대비 ±ALERT_PCT% 이상이면 카톡·텔레그램 알림 (같은 날·같은 방향 1회)
-- 직전 실행 이후 새로 나온 뉴스(네이버 증권 + 구글 뉴스)를 종목별로 최대 3건씩 카톡으로 보냄
+- stocks.json의 종목 시세를 확인해 전일 대비 ±ALERT_PCT% 이상이면 텔레그램 알림 (같은 날·같은 방향 1회)
+- 직전 실행 이후 새로 나온 뉴스(네이버 증권 + 구글 뉴스)를 종목별로 최대 3건씩 보냄
   (stocks.json에서 "news": false인 종목은 제외)
-- 국내 종목은 DART에 새로 올라온 공시도 종목별로 최대 3건씩 카톡으로 보냄 (DART_API_KEY가 있을 때만)
-- 상태(state/state.json)와 암호화한 카카오 토큰(state/token.enc)은 워크플로가 저장소에 커밋
+- 국내 종목은 DART에 새로 올라온 공시도 종목별로 최대 3건씩 보냄 (DART_API_KEY가 있을 때만)
+- 상태(state/state.json)는 워크플로가 저장소에 커밋
 
-필요한 환경변수(GitHub Secrets): KAKAO_REST_KEY, KAKAO_CLIENT_SECRET, KAKAO_REFRESH_TOKEN, TOKEN_KEY
+필요한 환경변수(GitHub Secrets): TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID (설정 방법은 telegram.py 참고)
 선택: DART_API_KEY (https://opendart.fss.or.kr 에서 발급)
-선택: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID - 카톡 '나와의 채팅'은 소리·진동이 없어서
-      텔레그램 봇으로도 같은 알림을 보낸다 (설정 방법은 telegram.py 참고)
 """
-import base64
-import hashlib
-import hmac
 import json
 import os
 import sys
 from datetime import datetime, timedelta, timezone
 
 import dart
-import kakao
 import telegram
 import stock_watch as sw
 
@@ -35,62 +29,6 @@ DART_SEEN_KEEP = 500
 HERE = os.path.dirname(os.path.abspath(__file__))
 STOCKS_PATH = os.path.join(HERE, "stocks.json")
 STATE_PATH = os.path.join(HERE, "state", "state.json")
-TOKEN_PATH = os.path.join(HERE, "state", "token.enc")
-
-
-# ---------- 토큰 암호화 (저장소에 평문으로 남기지 않기 위함) ----------
-
-def _keystream(key, nonce, n):
-    out = b""
-    i = 0
-    while len(out) < n:
-        out += hashlib.sha256(key + nonce + i.to_bytes(4, "big")).digest()
-        i += 1
-    return out[:n]
-
-
-def encrypt(key, data):
-    nonce = os.urandom(16)
-    ct = bytes(a ^ b for a, b in zip(data, _keystream(key, nonce, len(data))))
-    tag = hmac.new(key, nonce + ct, hashlib.sha256).digest()
-    return base64.b64encode(nonce + tag + ct).decode()
-
-
-def decrypt(key, text):
-    raw = base64.b64decode(text)
-    nonce, tag, ct = raw[:16], raw[16:48], raw[48:]
-    if not hmac.compare_digest(tag, hmac.new(key, nonce + ct, hashlib.sha256).digest()):
-        raise ValueError("token.enc 검증 실패 (TOKEN_KEY가 바뀌었나요?)")
-    return bytes(a ^ b for a, b in zip(ct, _keystream(key, nonce, len(ct))))
-
-
-def load_kakao_cfg(key):
-    kc = {"rest_api_key": os.environ["KAKAO_REST_KEY"],
-          "client_secret": os.environ.get("KAKAO_CLIENT_SECRET", ""),
-          "refresh_token": os.environ.get("KAKAO_REFRESH_TOKEN", "")}
-    if os.path.exists(TOKEN_PATH):
-        with open(TOKEN_PATH, encoding="utf-8") as f:
-            saved = json.loads(decrypt(key, f.read().strip()))
-        # Secret을 새 토큰으로 바꿔 넣었으면 그쪽을 우선 (재로그인한 경우)
-        if saved.get("seed") == hashlib.sha256(kc["refresh_token"].encode()).hexdigest():
-            kc["refresh_token"] = saved["refresh_token"]
-    return {"kakao": kc}
-
-
-def save_kakao_cfg(key, cfg):
-    kc = cfg["kakao"]
-    seed = hashlib.sha256(os.environ.get("KAKAO_REFRESH_TOKEN", "").encode()).hexdigest()
-    data = json.dumps({"refresh_token": kc["refresh_token"], "seed": seed}).encode()
-    # 암호문은 매번 달라지므로 내용이 같으면 다시 쓰지 않는다 (불필요한 state 커밋 방지)
-    if os.path.exists(TOKEN_PATH):
-        with open(TOKEN_PATH, encoding="utf-8") as f:
-            try:
-                if decrypt(key, f.read().strip()) == data:
-                    return
-            except ValueError:
-                pass
-    with open(TOKEN_PATH, "w", encoding="utf-8") as f:
-        f.write(encrypt(key, data) + "\n")
 
 
 # ---------- 뉴스 ----------
@@ -147,8 +85,7 @@ def test_items(stocks, dart_key, dart_corp):
 # ---------- 본체 ----------
 
 def main():
-    key = hashlib.sha256(os.environ["TOKEN_KEY"].encode()).digest()
-    cfg = load_kakao_cfg(key)
+    tg_token, tg_chat = os.environ["TELEGRAM_BOT_TOKEN"], os.environ["TELEGRAM_CHAT_ID"]
     with open(STOCKS_PATH, encoding="utf-8") as f:
         stocks = json.load(f)
     state = {"alerted": [], "seen": [], "dart_corp": {}, "dart_seen": []}
@@ -172,39 +109,25 @@ def main():
                 print("DART 고유번호 조회 실패:", e)
     else:
         print("DART_API_KEY 없음 - 공시 확인 건너뜀")
-    # 매 실행마다 토큰을 갱신해 두어야 알림이 뜸할 때도 리프레시 토큰이 만료되지 않는다
-    kakao._refresh(cfg["kakao"])
     seen_set, dart_seen_set = set(seen), set(dart_seen)
     errors = []
 
-    def deliver(fn, *args):
-        try:
-            fn(cfg, *args)
-        except Exception as e:
-            errors.append(str(e))
-            print("  카톡 전송 실패:", e)
-
-    tg_token, tg_chat = os.environ.get("TELEGRAM_BOT_TOKEN", ""), os.environ.get("TELEGRAM_CHAT_ID", "")
-
     def push(title, message, links):
-        if not (tg_token and tg_chat):
-            return
         try:
             telegram.send(tg_token, tg_chat, title, message, links)
         except Exception as e:
             errors.append(str(e))
             print("  텔레그램 전송 실패:", e)
 
-    def alert_list(header, items, header_link):
-        """카톡과 텔레그램으로 같은 목록 알림을 보낸다. items: [(제목, 설명, 링크)]"""
-        deliver(kakao.send_list, header, items, header_link)
+    def alert_list(header, items):
+        """목록 알림. items: [(제목, 설명, 링크)]"""
         push(header, "\n".join(f"{i + 1}. {t} ({d})" for i, (t, d, _) in enumerate(items)),
              [(f"{i + 1}번 보기", u) for i, (_, _, u) in enumerate(items)])
 
     if os.environ.get("TEST_ALERT") == "true":
         try:
             s, items = test_items(stocks, dart_key, dart_corp)
-            alert_list(f"🔔 [테스트] {s['name']} 링크 확인", items, sw.stock_url(s))
+            alert_list(f"🔔 [테스트] {s['name']} 링크 확인", items)
         except Exception as e:
             errors.append(str(e))
             print("테스트 알림 실패:", e)
@@ -219,7 +142,6 @@ def main():
                 arrow = "📈" if q["pct"] > 0 else "📉"
                 title = f"{arrow} [주식 알림] {s['name']} {q['pct']:+.2f}%"
                 body = f"현재 {q['price']}, 전일 대비 {q['change']}"
-                deliver(kakao.send, f"{title}\n{body}", sw.stock_url(s))
                 push(title, body, [("시세 보기", sw.stock_url(s))])
                 alerted.add(k)
         except Exception as e:
@@ -240,7 +162,7 @@ def main():
                         title, _, press = n["title"].rpartition(" - ")
                         items.append((title or n["title"], f"{press} · {n['pub']:%m/%d %H:%M}", n["link"]))
                     extra = f" 외 {len(new) - NEWS_PER_STOCK}건" if len(new) > NEWS_PER_STOCK else ""
-                    alert_list(f"📰 {s['name']} 새 뉴스{extra}", items, sw.stock_url(s))
+                    alert_list(f"📰 {s['name']} 새 뉴스{extra}", items)
                     print(f"  새 뉴스 {len(new)}건")
             except Exception as e:
                 print(f"{label} 뉴스 실패: {e}")
@@ -256,12 +178,11 @@ def main():
                     items = [(f["report_nm"].strip(), f"{f['flr_nm']} · {f['rcept_dt'][4:6]}/{f['rcept_dt'][6:]}",
                               dart.filing_url(f["rcept_no"])) for f in new[:DART_PER_STOCK]]
                     extra = f" 외 {len(new) - DART_PER_STOCK}건" if len(new) > DART_PER_STOCK else ""
-                    alert_list(f"📑 {s['name']} 새 공시{extra}", items, items[0][2])
+                    alert_list(f"📑 {s['name']} 새 공시{extra}", items)
                     print(f"  새 공시 {len(new)}건")
             except Exception as e:
                 print(f"{label} 공시 실패: {e}")
 
-    save_kakao_cfg(key, cfg)
     with open(STATE_PATH, "w", encoding="utf-8") as f:
         json.dump({"alerted": sorted(alerted, key=lambda x: x.split("|")[1])[-ALERTED_KEEP:], "seen": seen[-SEEN_KEEP:],
                    "dart_corp": dart_corp, "dart_seen": dart_seen[-DART_SEEN_KEEP:]},

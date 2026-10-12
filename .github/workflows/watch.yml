@@ -34,10 +34,6 @@ jobs:
         env:
           TZ: Asia/Seoul
           PYTHONIOENCODING: utf-8
-          KAKAO_REST_KEY: ${{ secrets.KAKAO_REST_KEY }}
-          KAKAO_CLIENT_SECRET: ${{ secrets.KAKAO_CLIENT_SECRET }}
-          KAKAO_REFRESH_TOKEN: ${{ secrets.KAKAO_REFRESH_TOKEN }}
-          TOKEN_KEY: ${{ secrets.TOKEN_KEY }}
           DART_API_KEY: ${{ secrets.DART_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -48,5 +44,5 @@ jobs:
         run: |
           git config user.name "stock-watch-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add state
+          git add -A state
           git diff --cached --quiet || (git commit -m "state $(date -u +%FT%TZ)" && git push)
