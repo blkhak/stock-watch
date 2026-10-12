@@ -21,7 +21,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: 시세·뉴스 확인
+      - name: 시세·뉴스·공시 확인
         env:
           TZ: Asia/Seoul
           PYTHONIOENCODING: utf-8
@@ -29,6 +29,7 @@ jobs:
           KAKAO_CLIENT_SECRET: ${{ secrets.KAKAO_CLIENT_SECRET }}
           KAKAO_REFRESH_TOKEN: ${{ secrets.KAKAO_REFRESH_TOKEN }}
           TOKEN_KEY: ${{ secrets.TOKEN_KEY }}
+          DART_API_KEY: ${{ secrets.DART_API_KEY }}
         run: python cloud_watch.py
       - name: 상태 저장
         if: always()

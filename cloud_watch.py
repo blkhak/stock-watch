@@ -2,9 +2,11 @@
 
 - stocks.json의 종목 시세를 확인해 전일 대비 ±ALERT_PCT% 이상이면 카톡 알림 (같은 날·같은 방향 1회)
 - 직전 실행 이후 새로 나온 뉴스를 종목별로 최대 3건씩 카톡으로 보냄
+- 국내 종목은 DART에 새로 올라온 공시도 종목별로 최대 3건씩 카톡으로 보냄 (DART_API_KEY가 있을 때만)
 - 상태(state/state.json)와 암호화한 카카오 토큰(state/token.enc)은 워크플로가 저장소에 커밋
 
 필요한 환경변수(GitHub Secrets): KAKAO_REST_KEY, KAKAO_CLIENT_SECRET, KAKAO_REFRESH_TOKEN, TOKEN_KEY
+선택: DART_API_KEY (https://opendart.fss.or.kr 에서 발급)
 """
 import base64
 import hashlib
@@ -14,6 +16,7 @@ import os
 import sys
 from datetime import datetime, timedelta, timezone
 
+import dart
 import kakao
 import stock_watch as sw
 
@@ -22,6 +25,8 @@ NEWS_PER_STOCK = 3
 NEWS_MAX_AGE_H = 2      # 첫 실행이나 실행이 밀렸을 때 오래된 뉴스가 쏟아지지 않게
 SEEN_KEEP = 1500
 ALERTED_KEEP = 300
+DART_PER_STOCK = 3
+DART_SEEN_KEEP = 500
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STOCKS_PATH = os.path.join(HERE, "stocks.json")
@@ -83,14 +88,30 @@ def main():
     cfg = load_kakao_cfg(key)
     with open(STOCKS_PATH, encoding="utf-8") as f:
         stocks = json.load(f)
-    state = {"alerted": [], "seen": []}
+    state = {"alerted": [], "seen": [], "dart_corp": {}, "dart_seen": []}
     if os.path.exists(STATE_PATH):
         with open(STATE_PATH, encoding="utf-8") as f:
             state.update(json.load(f))
     alerted, seen = set(state["alerted"]), list(state["seen"])
+    dart_key = os.environ.get("DART_API_KEY", "")
+    dart_corp, dart_seen = dict(state["dart_corp"]), list(state["dart_seen"])
+    dart_new_corp = set()   # 이번에 처음 감시하는 종목은 기존 공시를 본 것으로만 기록
+    if dart_key:
+        missing = [s["code"] for s in stocks if s["nation"] == "KOR" and s["code"] not in dart_corp]
+        if missing:
+            try:
+                found = dart.corp_codes(dart_key, missing)
+                for c in missing:   # 못 찾은 종목도 None으로 기록해 매번 다시 받지 않게
+                    dart_corp[c] = found.get(c)
+                dart_new_corp.update(found)
+                print("DART 고유번호:", found)
+            except Exception as e:
+                print("DART 고유번호 조회 실패:", e)
+    else:
+        print("DART_API_KEY 없음 - 공시 확인 건너뜀")
     # 매 실행마다 토큰을 갱신해 두어야 알림이 뜸할 때도 리프레시 토큰이 만료되지 않는다
     kakao._refresh(cfg["kakao"])
-    seen_set = set(seen)
+    seen_set, dart_seen_set = set(seen), set(dart_seen)
     errors = []
 
     def deliver(fn, *args):
@@ -135,9 +156,26 @@ def main():
         except Exception as e:
             print(f"{label} 뉴스 실패: {e}")
 
+        corp = dart_corp.get(s["code"]) if dart_key else None
+        if corp:
+            try:
+                new = [f for f in dart.filings(dart_key, corp) if f["rcept_no"] not in dart_seen_set]
+                for f in new:
+                    dart_seen_set.add(f["rcept_no"])
+                    dart_seen.append(f["rcept_no"])
+                if new and s["code"] not in dart_new_corp:
+                    items = [(f["report_nm"].strip(), f"{f['flr_nm']} · {f['rcept_dt'][4:6]}/{f['rcept_dt'][6:]}",
+                              dart.filing_url(f["rcept_no"])) for f in new[:DART_PER_STOCK]]
+                    extra = f" 외 {len(new) - DART_PER_STOCK}건" if len(new) > DART_PER_STOCK else ""
+                    deliver(kakao.send_list, f"📑 {s['name']} 새 공시{extra}", items, items[0][2])
+                    print(f"  새 공시 {len(new)}건")
+            except Exception as e:
+                print(f"{label} 공시 실패: {e}")
+
     save_kakao_cfg(key, cfg)
     with open(STATE_PATH, "w", encoding="utf-8") as f:
-        json.dump({"alerted": sorted(alerted, key=lambda x: x.split("|")[1])[-ALERTED_KEEP:], "seen": seen[-SEEN_KEEP:]},
+        json.dump({"alerted": sorted(alerted, key=lambda x: x.split("|")[1])[-ALERTED_KEEP:], "seen": seen[-SEEN_KEEP:],
+                   "dart_corp": dart_corp, "dart_seen": dart_seen[-DART_SEEN_KEEP:]},
                   f, ensure_ascii=False, indent=1)
     if errors:
         sys.exit("카톡 전송 오류: " + errors[0])
