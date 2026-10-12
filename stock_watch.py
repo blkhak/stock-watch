@@ -152,8 +152,9 @@ def ask_stocks():
 
 # ---------- 뉴스 ----------
 
-def get_news(name):
-    url = ("https://news.google.com/rss/search?q=" + urllib.parse.quote(f'"{name}"')
+def get_news(name, query=None):
+    """query를 주면 그대로 검색 (이름이 흔한 단어라 엉뚱한 기사가 섞이는 종목용)"""
+    url = ("https://news.google.com/rss/search?q=" + urllib.parse.quote(query or f'"{name}"')
            + "&hl=ko&gl=KR&ceid=KR:ko")
     root = ET.fromstring(http_get(url))
     cutoff = datetime.now(timezone.utc) - timedelta(hours=NEWS_MAX_AGE_H)

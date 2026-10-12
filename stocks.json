@@ -1,5 +1,8 @@
 [
-  {"name": "삼성전자", "code": "005930", "reuters": "005930", "nation": "KOR"},
-  {"name": "테슬라", "code": "TSLA", "reuters": "TSLA.O", "nation": "USA"},
+  {"name": "HRS", "code": "036640", "reuters": "036640", "nation": "KOR",
+   "news_query": "\"HRS\" (실리콘 OR 코스닥 OR 주가 OR 특징주) OR \"에이치알에스\""},
+  {"name": "현대공업", "code": "170030", "reuters": "170030", "nation": "KOR"},
+  {"name": "스톰테크", "code": "352090", "reuters": "352090", "nation": "KOR"},
+  {"name": "레드캡투어", "code": "038390", "reuters": "038390", "nation": "KOR"},
   {"name": "비트코인", "code": "KRW-BTC", "reuters": "KRW-BTC", "nation": "CRYPTO"}
 ]

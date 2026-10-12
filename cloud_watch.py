@@ -118,7 +118,7 @@ def main():
 
         try:
             cutoff = datetime.now(timezone.utc) - timedelta(hours=NEWS_MAX_AGE_H)
-            news = sw.get_news(s["name"])
+            news = sw.get_news(s["name"], s.get("news_query"))
             new = [n for n in news if n["link"] not in seen_set and n["pub"] >= cutoff]
             for n in news:   # 오래된 것도 본 것으로 기록
                 if n["link"] not in seen_set:
