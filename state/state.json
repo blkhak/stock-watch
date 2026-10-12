@@ -209,8 +209,14 @@
   "https://news.google.com/rss/articles/CBMiSkFVX3lxTE5UNVNHT0FjYzFJNWpqUng5NnBQRDNGUnlNVXhqMGp2bFRYUXhwN0xBYVRpS0RKTVdIamlPWjViT2hhYmRtQS1lYXZn?oc=5",
   "https://news.google.com/rss/articles/CBMiakFVX3lxTFBwMnVMN1Y4Nl9TRFd0bEN6elVMLVY5WVlrNG9ZcTBXUHZqZlR2VFZWVFlfaWVUSjhMSzBHZUtNc2UxLVI4RThsZXFJWlhZR3RlZlNBeVcxTFNLSVI0Tk1lWkY2dmsyYi1MQ2c?oc=5",
   "https://news.google.com/rss/articles/CBMiSkFVX3lxTFBfR2RVbks3Zl9KREJKdDBTRS1fczREeVBrY3F5Tl9GTDFGb3RXXzJUbG5nMkpqdFJQUjh0V1Rwd3BUS09kdTlsWEZn?oc=5",
-  "https://news.google.com/rss/articles/CBMiZkFVX3lxTE4zZTR4eVhpblFkbXJKYTUzOU1FS2ZaNmN6NGNJbm9rV2FpRlBhVEN2Rjg0X3cwaG1SeVR1eUZab2h1bndjb0JhUVRCWnlVRy1vR2MwNWhodmhya0RFVVg4TWYybDFBUQ?oc=5"
+  "https://news.google.com/rss/articles/CBMiZkFVX3lxTE4zZTR4eVhpblFkbXJKYTUzOU1FS2ZaNmN6NGNJbm9rV2FpRlBhVEN2Rjg0X3cwaG1SeVR1eUZab2h1bndjb0JhUVRCWnlVRy1vR2MwNWhodmhya0RFVVg4TWYybDFBUQ?oc=5",
+  "https://news.google.com/rss/articles/CBMiVkFVX3lxTE1wRWVWQV9JaU5OX2hwU2cyYnFIaVE4NFB1UVN6V0JFYnNCb1pVSUJYU2d4M0RDMC1UMGlFM1JTci05cktabWpwcnplSTVnamMzSXMwc1BB?oc=5"
  ],
- "dart_corp": {},
+ "dart_corp": {
+  "036640": "00230911",
+  "170030": "00164502",
+  "352090": "01226270",
+  "038390": "00261355"
+ },
  "dart_seen": []
 }
