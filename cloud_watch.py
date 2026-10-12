@@ -1,7 +1,8 @@
 """GitHub Actions에서 1시간마다 한 번 실행되는 감시 스크립트.
 
 - stocks.json의 종목 시세를 확인해 전일 대비 ±ALERT_PCT% 이상이면 카톡 알림 (같은 날·같은 방향 1회)
-- 직전 실행 이후 새로 나온 뉴스를 종목별로 최대 3건씩 카톡으로 보냄
+- 직전 실행 이후 새로 나온 뉴스(네이버 증권 + 구글 뉴스)를 종목별로 최대 3건씩 카톡으로 보냄
+  (stocks.json에서 "news": false인 종목은 제외)
 - 국내 종목은 DART에 새로 올라온 공시도 종목별로 최대 3건씩 카톡으로 보냄 (DART_API_KEY가 있을 때만)
 - 상태(state/state.json)와 암호화한 카카오 토큰(state/token.enc)은 워크플로가 저장소에 커밋
 
@@ -81,6 +82,32 @@ def save_kakao_cfg(key, cfg):
         f.write(encrypt(key, data) + "\n")
 
 
+# ---------- 뉴스 ----------
+
+def _norm(title):
+    return "".join(ch for ch in title.rpartition(" - ")[0] or title if ch.isalnum())
+
+
+def collect_news(s):
+    """국내 종목은 네이버 증권 뉴스를 우선하고, 구글 뉴스에서 같은 제목의 기사는 뺀다."""
+    news, errs = [], []
+    if s["nation"] == "KOR":
+        try:
+            news += sw.get_naver_news(s["code"])
+        except Exception as e:
+            errs.append(f"네이버: {e}")
+    try:
+        titles = {_norm(n["title"]) for n in news}
+        news += [n for n in sw.get_news(s["name"], s.get("news_query")) if _norm(n["title"]) not in titles]
+    except Exception as e:
+        errs.append(f"구글: {e}")
+    if errs and not news:
+        raise RuntimeError(", ".join(errs))
+    for e in errs:
+        print("  뉴스 일부 실패 -", e)
+    return sorted(news, key=lambda n: n["pub"], reverse=True)
+
+
 # ---------- 본체 ----------
 
 def main():
@@ -137,24 +164,25 @@ def main():
         except Exception as e:
             print(f"{label} 시세 실패: {e}")
 
-        try:
-            cutoff = datetime.now(timezone.utc) - timedelta(hours=NEWS_MAX_AGE_H)
-            news = sw.get_news(s["name"], s.get("news_query"))
-            new = [n for n in news if n["link"] not in seen_set and n["pub"] >= cutoff]
-            for n in news:   # 오래된 것도 본 것으로 기록
-                if n["link"] not in seen_set:
-                    seen_set.add(n["link"])
-                    seen.append(n["link"])
-            if new:
-                items = []
-                for n in new[:NEWS_PER_STOCK]:
-                    title, _, press = n["title"].rpartition(" - ")
-                    items.append((title or n["title"], f"{press} · {n['pub']:%m/%d %H:%M}", n["link"]))
-                extra = f" 외 {len(new) - NEWS_PER_STOCK}건" if len(new) > NEWS_PER_STOCK else ""
-                deliver(kakao.send_list, f"📰 {s['name']} 새 뉴스{extra}", items, sw.stock_url(s))
-                print(f"  새 뉴스 {len(new)}건")
-        except Exception as e:
-            print(f"{label} 뉴스 실패: {e}")
+        if s.get("news") is not False:
+            try:
+                cutoff = datetime.now(timezone.utc) - timedelta(hours=NEWS_MAX_AGE_H)
+                news = collect_news(s)
+                new = [n for n in news if n["link"] not in seen_set and n["pub"] >= cutoff]
+                for n in news:   # 오래된 것도 본 것으로 기록
+                    if n["link"] not in seen_set:
+                        seen_set.add(n["link"])
+                        seen.append(n["link"])
+                if new:
+                    items = []
+                    for n in new[:NEWS_PER_STOCK]:
+                        title, _, press = n["title"].rpartition(" - ")
+                        items.append((title or n["title"], f"{press} · {n['pub']:%m/%d %H:%M}", n["link"]))
+                    extra = f" 외 {len(new) - NEWS_PER_STOCK}건" if len(new) > NEWS_PER_STOCK else ""
+                    deliver(kakao.send_list, f"📰 {s['name']} 새 뉴스{extra}", items, sw.stock_url(s))
+                    print(f"  새 뉴스 {len(new)}건")
+            except Exception as e:
+                print(f"{label} 뉴스 실패: {e}")
 
         corp = dart_corp.get(s["code"]) if dart_key else None
         if corp:

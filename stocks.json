@@ -4,5 +4,5 @@
   {"name": "현대공업", "code": "170030", "reuters": "170030", "nation": "KOR"},
   {"name": "스톰테크", "code": "352090", "reuters": "352090", "nation": "KOR"},
   {"name": "레드캡투어", "code": "038390", "reuters": "038390", "nation": "KOR"},
-  {"name": "비트코인", "code": "KRW-BTC", "reuters": "KRW-BTC", "nation": "CRYPTO"}
+  {"name": "비트코인", "code": "KRW-BTC", "reuters": "KRW-BTC", "nation": "CRYPTO", "news": false}
 ]

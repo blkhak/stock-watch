@@ -6,6 +6,7 @@
 """
 import ctypes
 import email.utils
+import html
 import json
 import os
 import secrets
@@ -169,6 +170,24 @@ def get_news(name, query=None):
         news.append({"title": item.findtext("title", ""),
                      "link": item.findtext("link", ""),
                      "pub": pub.astimezone()})
+    news.sort(key=lambda x: x["pub"], reverse=True)
+    return news
+
+
+def get_naver_news(code):
+    """네이버 증권 종목 뉴스. 제목은 구글 뉴스처럼 '제목 - 언론사' 형식으로 맞춘다."""
+    data = json.loads(http_get(f"https://m.stock.naver.com/api/news/stock/{code}?pageSize=20&page=1"))
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=NEWS_MAX_AGE_H)
+    kst = timezone(timedelta(hours=9))
+    news = []
+    for group in data:
+        for it in group["items"]:
+            pub = datetime.strptime(it["datetime"], "%Y%m%d%H%M").replace(tzinfo=kst)
+            if pub < cutoff:
+                continue
+            news.append({"title": f"{html.unescape(it['titleFull'] or it['title'])} - {it['officeName']}",
+                         "link": f"https://n.news.naver.com/mnews/article/{it['officeId']}/{it['articleId']}",
+                         "pub": pub.astimezone()})
     news.sort(key=lambda x: x["pub"], reverse=True)
     return news
 
