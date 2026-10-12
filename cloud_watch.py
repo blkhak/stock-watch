@@ -108,6 +108,31 @@ def collect_news(s):
     return sorted(news, key=lambda n: n["pub"], reverse=True)
 
 
+def send_test(cfg, stocks, dart_key, dart_corp):
+    """수동 실행 때 test 옵션을 켜면 실제 기사·공시 링크로 알림 모양과 링크 연결을 확인한다."""
+    s = next(x for x in stocks if x["nation"] == "KOR")
+    keep, sw.NEWS_MAX_AGE_H = sw.NEWS_MAX_AGE_H, 24 * 365   # 오래된 기사라도 링크 확인용으로 쓴다
+    try:
+        naver = sw.get_naver_news(s["code"])[:1]
+        google = sw.get_news(s["name"], s.get("news_query"))[:1]
+    finally:
+        sw.NEWS_MAX_AGE_H = keep
+    items = []
+    for n in naver + google:
+        title, _, press = n["title"].rpartition(" - ")
+        items.append((title or n["title"], f"{press} · {n['pub']:%m/%d %H:%M}", n["link"]))
+    corp = dart_corp.get(s["code"])
+    if dart_key and corp:
+        f = (dart.filings(dart_key, corp, days=365) or [None])[0]
+        if f:
+            items.append((f["report_nm"].strip(), f"공시 · {f['rcept_dt'][4:6]}/{f['rcept_dt'][6:]}",
+                          dart.filing_url(f["rcept_no"])))
+    if not items:
+        raise RuntimeError("테스트에 쓸 기사·공시를 찾지 못함")
+    kakao.send_list(cfg, f"🔔 [테스트] {s['name']} 링크 확인", items, sw.stock_url(s))
+    print("테스트 알림:", [i[2] for i in items])
+
+
 # ---------- 본체 ----------
 
 def main():
@@ -147,6 +172,13 @@ def main():
         except Exception as e:
             errors.append(str(e))
             print("  카톡 전송 실패:", e)
+
+    if os.environ.get("TEST_ALERT") == "true":
+        try:
+            send_test(cfg, stocks, dart_key, dart_corp)
+        except Exception as e:
+            errors.append(str(e))
+            print("테스트 알림 실패:", e)
 
     for s in stocks:
         label = f"{s['name']}({s['code']})"
