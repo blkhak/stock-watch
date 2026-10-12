@@ -1,0 +1,5 @@
+[
+  {"name": "삼성전자", "code": "005930", "reuters": "005930", "nation": "KOR"},
+  {"name": "테슬라", "code": "TSLA", "reuters": "TSLA.O", "nation": "USA"},
+  {"name": "비트코인", "code": "KRW-BTC", "reuters": "KRW-BTC", "nation": "CRYPTO"}
+]
