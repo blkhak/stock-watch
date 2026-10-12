@@ -1,6 +1,6 @@
 """GitHub Actions에서 실행되는 감시 스크립트 (평일 낮엔 1시간, 밤·주말엔 3시간마다).
 
-- stocks.json의 종목 시세를 확인해 전일 대비 ±ALERT_PCT% 이상이면 카톡 알림 (같은 날·같은 방향 1회)
+- stocks.json의 종목 시세를 확인해 전일 대비 ±ALERT_PCT% 이상이면 카톡·텔레그램 알림 (같은 날·같은 방향 1회)
 - 직전 실행 이후 새로 나온 뉴스(네이버 증권 + 구글 뉴스)를 종목별로 최대 3건씩 카톡으로 보냄
   (stocks.json에서 "news": false인 종목은 제외)
 - 국내 종목은 DART에 새로 올라온 공시도 종목별로 최대 3건씩 카톡으로 보냄 (DART_API_KEY가 있을 때만)
@@ -8,6 +8,8 @@
 
 필요한 환경변수(GitHub Secrets): KAKAO_REST_KEY, KAKAO_CLIENT_SECRET, KAKAO_REFRESH_TOKEN, TOKEN_KEY
 선택: DART_API_KEY (https://opendart.fss.or.kr 에서 발급)
+선택: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID - 카톡 '나와의 채팅'은 소리·진동이 없어서
+      텔레그램 봇으로도 같은 알림을 보낸다 (설정 방법은 telegram.py 참고)
 """
 import base64
 import hashlib
@@ -19,6 +21,7 @@ from datetime import datetime, timedelta, timezone
 
 import dart
 import kakao
+import telegram
 import stock_watch as sw
 
 ALERT_PCT = 5.0
@@ -116,7 +119,7 @@ def collect_news(s):
     return sorted(news, key=lambda n: n["pub"], reverse=True)
 
 
-def send_test(cfg, stocks, dart_key, dart_corp):
+def test_items(stocks, dart_key, dart_corp):
     """수동 실행 때 test 옵션을 켜면 실제 기사·공시 링크로 알림 모양과 링크 연결을 확인한다."""
     s = next(x for x in stocks if x["nation"] == "KOR")
     keep, sw.NEWS_MAX_AGE_H = sw.NEWS_MAX_AGE_H, 24 * 365   # 오래된 기사라도 링크 확인용으로 쓴다
@@ -137,8 +140,8 @@ def send_test(cfg, stocks, dart_key, dart_corp):
                           dart.filing_url(f["rcept_no"])))
     if not items:
         raise RuntimeError("테스트에 쓸 기사·공시를 찾지 못함")
-    kakao.send_list(cfg, f"🔔 [테스트] {s['name']} 링크 확인", items, sw.stock_url(s))
     print("테스트 알림:", [i[2] for i in items])
+    return s, items
 
 
 # ---------- 본체 ----------
@@ -181,9 +184,27 @@ def main():
             errors.append(str(e))
             print("  카톡 전송 실패:", e)
 
+    tg_token, tg_chat = os.environ.get("TELEGRAM_BOT_TOKEN", ""), os.environ.get("TELEGRAM_CHAT_ID", "")
+
+    def push(title, message, links):
+        if not (tg_token and tg_chat):
+            return
+        try:
+            telegram.send(tg_token, tg_chat, title, message, links)
+        except Exception as e:
+            errors.append(str(e))
+            print("  텔레그램 전송 실패:", e)
+
+    def alert_list(header, items, header_link):
+        """카톡과 텔레그램으로 같은 목록 알림을 보낸다. items: [(제목, 설명, 링크)]"""
+        deliver(kakao.send_list, header, items, header_link)
+        push(header, "\n".join(f"{i + 1}. {t} ({d})" for i, (t, d, _) in enumerate(items)),
+             [(f"{i + 1}번 보기", u) for i, (_, _, u) in enumerate(items)])
+
     if os.environ.get("TEST_ALERT") == "true":
         try:
-            send_test(cfg, stocks, dart_key, dart_corp)
+            s, items = test_items(stocks, dart_key, dart_corp)
+            alert_list(f"🔔 [테스트] {s['name']} 링크 확인", items, sw.stock_url(s))
         except Exception as e:
             errors.append(str(e))
             print("테스트 알림 실패:", e)
@@ -196,10 +217,10 @@ def main():
             k = f"{s['code']}|{q['traded_at'][:10]}|{'up' if q['pct'] > 0 else 'down'}"
             if abs(q["pct"]) >= ALERT_PCT and k not in alerted:
                 arrow = "📈" if q["pct"] > 0 else "📉"
-                deliver(kakao.send,
-                        f"{arrow} [주식 알림] {s['name']} {q['pct']:+.2f}%\n"
-                        f"현재 {q['price']}, 전일 대비 {q['change']}",
-                        sw.stock_url(s))
+                title = f"{arrow} [주식 알림] {s['name']} {q['pct']:+.2f}%"
+                body = f"현재 {q['price']}, 전일 대비 {q['change']}"
+                deliver(kakao.send, f"{title}\n{body}", sw.stock_url(s))
+                push(title, body, [("시세 보기", sw.stock_url(s))])
                 alerted.add(k)
         except Exception as e:
             print(f"{label} 시세 실패: {e}")
@@ -219,7 +240,7 @@ def main():
                         title, _, press = n["title"].rpartition(" - ")
                         items.append((title or n["title"], f"{press} · {n['pub']:%m/%d %H:%M}", n["link"]))
                     extra = f" 외 {len(new) - NEWS_PER_STOCK}건" if len(new) > NEWS_PER_STOCK else ""
-                    deliver(kakao.send_list, f"📰 {s['name']} 새 뉴스{extra}", items, sw.stock_url(s))
+                    alert_list(f"📰 {s['name']} 새 뉴스{extra}", items, sw.stock_url(s))
                     print(f"  새 뉴스 {len(new)}건")
             except Exception as e:
                 print(f"{label} 뉴스 실패: {e}")
@@ -235,7 +256,7 @@ def main():
                     items = [(f["report_nm"].strip(), f"{f['flr_nm']} · {f['rcept_dt'][4:6]}/{f['rcept_dt'][6:]}",
                               dart.filing_url(f["rcept_no"])) for f in new[:DART_PER_STOCK]]
                     extra = f" 외 {len(new) - DART_PER_STOCK}건" if len(new) > DART_PER_STOCK else ""
-                    deliver(kakao.send_list, f"📑 {s['name']} 새 공시{extra}", items, items[0][2])
+                    alert_list(f"📑 {s['name']} 새 공시{extra}", items, items[0][2])
                     print(f"  새 공시 {len(new)}건")
             except Exception as e:
                 print(f"{label} 공시 실패: {e}")
@@ -246,7 +267,7 @@ def main():
                    "dart_corp": dart_corp, "dart_seen": dart_seen[-DART_SEEN_KEEP:]},
                   f, ensure_ascii=False, indent=1)
     if errors:
-        sys.exit("카톡 전송 오류: " + errors[0])
+        sys.exit("알림 전송 오류: " + errors[0])
 
 
 if __name__ == "__main__":
