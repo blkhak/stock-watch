@@ -214,7 +214,8 @@
   "https://news.google.com/rss/articles/CBMie0FVX3lxTE9WRmRVLTZXNGVFak14X1YzNnk1VXZSR0FpTUJNR25OckZJdnJmNEJiZE9Kdjl2UHQwUjZnYUpBblhiOGtrZDd4V2dueU5xdXB1eFZ1UlQ1cHdtaUxlaVNDcTJ1ZnUxXzVGNkZKSmRjNlJkcG9rVHhJR1pwdw?oc=5",
   "https://n.news.naver.com/mnews/article/293/0000091554",
   "https://news.google.com/rss/articles/CBMic0FVX3lxTE92enZaQ3J2T0ZCc2ZIRDU3dHBhMzJ3TnlFdm9XaTQ3aDZHU01DcHJJZjdidnI1di1ralRHMWx0WFRGVG1kejBfSG1ERVVIZ2NFQzlzZXFvV25SekUyeWtZZTNhQkVMVlRyeTJaNlI2MDU2N0U?oc=5",
-  "https://n.news.naver.com/mnews/article/022/0004167497"
+  "https://n.news.naver.com/mnews/article/022/0004167497",
+  "https://news.google.com/rss/articles/CBMic0FVX3lxTE4tMFY5bnlUU2ZsMnNCd0EwSWxmUnBaTEY5UU0yMTBZcmtwLWdsX1UzVURXMm96QlhqT0JfSXpMV29lTXlVU3ZnSjRBVUVHUDBVc1luOTNKaG1qSHhiU0pFWmFoS2hVaXowOFZuc3ZnZDYyUXc?oc=5"
  ],
  "dart_corp": {
   "036640": "00230911",
@@ -224,6 +225,7 @@
  },
  "dart_seen": [
   "20261012900283",
-  "20261012900238"
+  "20261012900238",
+  "20261021900361"
  ]
 }
